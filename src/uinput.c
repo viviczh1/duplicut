@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <termios.h>
-#include "user_input.h"
+#include "uinput.h"
 #include "status.h"
 #include "const.h"
 #include "error.h"
@@ -14,8 +14,7 @@ static struct termios   g_old_tio, g_new_tio;
 
 
 /** thread worker
- * print progression status with print_status() each
- * time user presses keyboard.
+ * print progression status with print_status() on keypress
  */
 static void *watch_user_input_worker(void *arg)
 {
@@ -26,7 +25,10 @@ static void *watch_user_input_worker(void *arg)
     {
 #if DEBUG_PROGRAM_STATUS == 0
         memset(input, 0, BUF_SIZE);
+# pragma GCC diagnostic push // no need to check read()'s return here
+# pragma GCC diagnostic ignored "-Wunused-result"
         read(STDIN_FILENO, input, BUF_SIZE - 1);
+# pragma GCC diagnostic pop
 #else
         usleep(100000);
 #endif
@@ -36,15 +38,13 @@ static void *watch_user_input_worker(void *arg)
 }
 
 
-/** called by atexit() to restore original termios
- */
 static void restore_termios(void)
 {
     tcsetattr(STDIN_FILENO, TCSANOW, &g_old_tio);
 }
 
 
-/** disable line buffering and echo in current terminal
+/** disable terminal's line buffering & echo
  */
 static void config_termios(void)
 {
@@ -61,8 +61,6 @@ static void config_termios(void)
 }
 
 
-/** watch user keyboard input
- */
 void        watch_user_input(void)
 {
     pthread_t       tid;
@@ -72,5 +70,5 @@ void        watch_user_input(void)
 
     config_termios();
     if (pthread_create(&tid, NULL, &watch_user_input_worker, NULL) < 0)
-        error("can't create watch_user_input_worker() thread: %s", ERRNO);
+        error("cannot create watch_user_input_worker() thread: %s", ERRNO);
 }

@@ -3,11 +3,13 @@
 
 # include "line.h"
 
-# include "murmur3.h"
-# include "fasthash.h"
+# define XXH_INLINE_ALL
+# include "xxhash.h"
 
-# define SEED (0)
-
-long    hash(t_line *line);
+# if __SIZEOF_POINTER__ == 8
+#  define HASH(ln)   (XXH3_64bits(LINE_ADDR(*ln), LINE_SIZE(*ln)))
+# else
+#  error "not x64 arch (__SIZEOF_POINTER__ != 8)"
+# endif
 
 #endif /* HASH_H */

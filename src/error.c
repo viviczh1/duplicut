@@ -3,6 +3,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+/** Ignore warning:
+ * ignoring return value of ‘write’, declared with attribute warn_unused_result
+ * Because we write to STDERR_FILENO & don't need to check write() return.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 
 /** Print a formatted warning message without leaving the program.
  * The use of printf() inside this function causes it
@@ -42,7 +48,7 @@ void            error(const char *fmt, ...)
 
 /** Suddenly exit the program with fatal error.
  * Unlike error(), this function does not allocates
- * any additionnal memory before exiting program.
+ * any additional memory before exiting program.
  */
 void            die(const char *msg)
 {
@@ -50,3 +56,5 @@ void            die(const char *msg)
     perror(msg);
     exit(1);
 }
+
+#pragma GCC diagnostic pop

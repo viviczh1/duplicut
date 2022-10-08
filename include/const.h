@@ -1,26 +1,26 @@
 #pragma once
 
 #define PROGNAME                "duplicut"
-#define PROJECT_VERSION         "1.0"
+#define PROJECT_VERSION         "2.2"
 #define PROJECT_URL             "http://github.com/nil0x42/duplicut"
 
-/* max hashmap size (factor based on available memory) */
-#define HMAP_MAX_SIZE           (0.2)
+/* portion of available memory to allow to hashmap */
+#define HMAP_MAX_SIZE           (0.5)
 
-/* hashmap maximum load factor */
+/* ideal portion of hashmap to be filled */
 #define HMAP_LOAD_FACTOR        (0.5)
 
 /* medium line size for determining hashmap min size */
 #define MEDIUM_LINE_BYTES       (8)
 
-/* this char is written at start of lines as a `removal mark` */
+/* char used to mark duplicate lines for removal */
 #define DISABLED_LINE           '\0'
 
 /* enable/disable multithreading feature */
-#define MULTITHREADING          (0)
+#define MULTITHREADING          (1)
 
-/* minimum needed memory (change it with care... can throw bugs if too low */
+/* minimum needed memory (change with care... can throw bugs if too low */
 #define MIN_MEMORY              (65536)
 
-/* program status is displayed periodically instead of waiting keypress */
+/* display program status periodically instead of waiting keypress */
 #define DEBUG_PROGRAM_STATUS    (0)

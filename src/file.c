@@ -1,17 +1,21 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <ctype.h>
 #include "file.h"
 #include "const.h"
+#include "status.h"
 #include "error.h"
 #include "debug.h"
+#include "bytesize.h"
+#include "config.h"
 
-# define FILE_ISSET(_f) ((_f)->fd >= 0)
-
-# define BUF_SIZE       (0x20000) /* 128kb */
+#define FILE_ISSET(_f) ((_f)->fd >= 0)
+#define BUF_SIZE       (0x20000) /* 128kb */
 
 
 static struct file  g_infile;
@@ -51,7 +55,7 @@ static void close_file(struct file *file)
 }
 
 
-/** Destructor callback for optentially open files
+/** Destructor callback for potentially open files
  * Close infile, outfile and tmpfile (if exists)
  */
 static void close_all(void)
@@ -83,7 +87,7 @@ static void open_file(struct file *file, const char *pathname, int flags)
 
 
 /** Specific opener for g_tmpfile, which also uses mkstemp.
- * This function is a singleton (sould be called once).
+ * This function is a singleton (should be called once).
  */
 static void create_tmpfile(void)
 {
@@ -100,18 +104,47 @@ static void create_tmpfile(void)
 }
 
 
-static void file_copy(int dst_fd, int src_fd)
+static void buf_tolower(char *str, ssize_t size)
+{
+    while (size--)
+    {
+        str[size] = tolower(str[size]);
+    }
+}
+
+
+static void buf_toupper(char *str, ssize_t size)
+{
+    while (size--)
+    {
+        str[size] = toupper(str[size]);
+    }
+}
+
+
+/** Copy file from src_fd to dst_fd
+ */
+static void copy_file(int dst_fd, int src_fd, bool send_status)
 {
     char        buffer[BUF_SIZE];
     ssize_t     nread;
+    size_t      read_bytes;
 
 #if _POSIX_C_SOURCE >= 200112L
     posix_fadvise(src_fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
+    read_bytes = 0;
     while ((nread = read(src_fd, buffer, BUF_SIZE)) > 0)
     {
         char    *dst_ptr = buffer;
         ssize_t nwrite;
+
+        if (g_conf.lowercase_wordlist)
+            buf_tolower(buffer, nread);
+        else if (g_conf.uppercase_wordlist)
+            buf_toupper(buffer, nread);
+
+        read_bytes += (size_t)nread;
 
         do
         {
@@ -122,12 +155,17 @@ static void file_copy(int dst_fd, int src_fd)
             }
             else if (errno != EINTR)
             {
-                error("file_copy() -> write(): %s", ERRNO);
+                error("copy_file() -> write(): %s", ERRNO);
             }
         } while (nread > 0);
+
+        if (send_status && read_bytes >= BUF_SIZE * 0x100) {
+            set_status(FCOPY_BYTES, read_bytes);
+            read_bytes = 0;
+        }
     }
     if (nread != 0)
-        error("file_copy() -> read(): %s", ERRNO);
+        error("copy_file() -> read(): %s", ERRNO);
 }
 
 
@@ -135,7 +173,7 @@ static void file_copy(int dst_fd, int src_fd)
  * - Handle src/dst files, and return a struct file* for use by duplicut.
  * - Can deal with non-regular files
  * - Registers cleanup functions with atexit()
- * - returned file has `addr` attribute mapped in memoy
+ * - returned file has `addr` attribute mapped in memory
  */
 void        init_file(const char *infile_name, const char *outfile_name)
 {
@@ -159,7 +197,8 @@ void        init_file(const char *infile_name, const char *outfile_name)
         file = &g_tmpfile;
     }
 
-    file_copy(file->fd, g_infile.fd);
+    set_status(FILE_SIZE, g_infile.info.st_size);
+    copy_file(file->fd, g_infile.fd, 1);
     close_file(&g_infile);
 
     if (fstat(file->fd, &(file->info)) < 0)
@@ -175,14 +214,14 @@ void        init_file(const char *infile_name, const char *outfile_name)
     file->orig_size = file->info.st_size;
     g_file = file;
 
-    DLOG("");
-    DLOG("---------- g_file ------------");
-    DLOG("g_file->fd:           %d", g_file->fd);
-    DLOG("g_file->name:         %s", g_file->name);
-    DLOG("g_file->addr:         %p", g_file->addr);
-    DLOG("g_file->info.st_size: %ld", g_file->info.st_size);
-    DLOG("------------------------------");
-    DLOG("");
+    DLOG1("");
+    DLOG1("---------- g_file ------------");
+    DLOG1("g_file->fd:           %d", g_file->fd);
+    DLOG1("g_file->name:         %s", g_file->name);
+    DLOG1("g_file->addr:         %p", g_file->addr);
+    DLOG1("g_file->info.st_size: %s (%ld)",
+            sizerepr(g_file->info.st_size), g_file->info.st_size);
+    DLOG1("------------------------------");
 }
 
 
@@ -208,7 +247,7 @@ void        destroy_file(void)
     if (FILE_ISSET(&g_tmpfile))
     {
         lseek(g_tmpfile.fd, 0, SEEK_SET);
-        file_copy(g_outfile.fd, g_tmpfile.fd);
+        copy_file(g_outfile.fd, g_tmpfile.fd, 0);
     }
 
     close_all();

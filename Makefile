@@ -1,52 +1,69 @@
-TARGET       = duplicut
+TARGET        = duplicut
+SHELL         = /bin/sh
 
-SHELL        = /bin/sh
- 
-CFLAGS       = -Iinclude -Wall -Wextra \
-			   -Wdisabled-optimization -Winline \
-			   -Wdouble-promotion -Wunknown-pragmas \
-			   -Wno-unknown-warning-option \
-			   -mtune=native -ffast-math
-LDFLAGS      = -lm -pthread
-RELEASEFLAGS = -O2 -D NDEBUG
-DEBUGFLAGS   = -O0 -D DEBUG -std=gnu99 -g3
- 
-SOURCES      = main.c thpool.c file.c chunk.c line.c tag_duplicates.c \
-			   optparse.c config.c error.c memstate.c meminfo.c bytesize.c \
-			   hmap.c hash.c fasthash.c murmur3.c \
-			   status.c user_input.c \
+# debug level
+level         = 1
 
-COMMON       = include/const.h include/debug.h
-OBJECTS      = $(patsubst %.c, objects/%.o, $(SOURCES))
- 
-PREFIX       = $(DESTDIR)/usr/local
-BINDIR       = $(PREFIX)/bin
- 
- 
+CFLAGS        = -Iinclude -Wall -Wextra \
+                -Wdisabled-optimization -Winline \
+                -Wdouble-promotion -Wunknown-pragmas \
+                -Wno-implicit-fallthrough \
+                -Wno-error=implicit-function-declaration \
+                -mtune=native -ffast-math
+LDFLAGS       = -lm -pthread
+RELEASEFLAGS  = -O2 -D NDEBUG
+DEBUGFLAGS    = -O0 -D DEBUG=$(level) -std=gnu99 -g3
+COVERAGEFLAGS = -O0 -D NDEBUG -std=gnu99 -g3 --coverage
+
+SOURCES       = main.c thpool.c file.c chunk.c line.c dedupe.c \
+                optparse.c config.c error.c memstate.c meminfo.c bytesize.c \
+                hmap.c status.c uinput.c \
+
+COMMON        = include/const.h include/debug.h
+OBJECTS       = $(patsubst %.c, objects/%.o, $(SOURCES))
+
+PREFIX        = $(DESTDIR)/usr/local
+BINDIR        = $(PREFIX)/bin
+
+
 all: $(TARGET)
- 
-$(TARGET): CFLAGS += $(DEBUGFLAGS)
-$(TARGET): $(OBJECTS) $(COMMON)
-	-ctags -R .
-	$(CC) $(FLAGS) $(CFLAGS) $(DEBUGFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
+release: $(TARGET)
+re: $(TARGET)
 
-release: CFLAGS += $(RELEASEFLAGS)
-release: fclean $(OBJECTS) $(COMMON)
-	$(CC) $(FLAGS) $(CFLAGS) $(RELEASEFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
-	strip -s $(TARGET)
+debug: CFLAGS += $(DEBUGFLAGS)
+debug: distclean $(OBJECTS) $(COMMON)
+	-ctags src/* include/*
+	$(CC) $(FLAGS) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
+
+coverage: CFLAGS += $(COVERAGEFLAGS)
+coverage: distclean $(OBJECTS) $(COMMON)
+	$(CC) $(FLAGS) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
+
+$(TARGET): CFLAGS += $(RELEASEFLAGS)
+$(TARGET): distclean $(OBJECTS) $(COMMON)
+	$(CC) $(FLAGS) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
+	strip --strip-all $(TARGET) || strip -Sx $(TARGET) # osx fallback
 
 profile: CFLAGS += -pg
-profile: fclean $(TARGET)
+profile: distclean $(TARGET)
+
+profile-generate: CFLAGS += $(RELEASEFLAGS) -fprofile-generate -fprofile-arcs
+profile-generate: distclean $(OBJECTS) $(COMMON)
+	$(CC) $(FLAGS) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
+
+rm-objects:
+	rm objects/*.o
+
+profile-use: CFLAGS += $(RELEASEFLAGS) -fprofile-use -fprofile-arcs
+profile-use: rm-objects $(OBJECTS) $(COMMON)
+	$(CC) $(FLAGS) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
 
 objects/%.o: src/%.c
 	mkdir -p `dirname $@`
 	$(CC) $(FLAGS) $(CFLAGS) -c $< -o $@
- 
+
 install: release
 	install -D $(TARGET) $(BINDIR)/$(TARGET)
- 
-install-strip: release
-	install -D -s $(TARGET) $(BINDIR)/$(TARGET)
 
 uninstall:
 	rm $(BINDIR)/$(TARGET)
@@ -58,15 +75,10 @@ clean:
 	-rm -rf objects/
 	-rm -f gmon.out
 	-rm -f tags
- 
+
 distclean: clean
 	-rm -f $(TARGET)
 
-fclean: distclean
 
-re: fclean all
- 
-.PHONY: all release profile \
-        clean distclean \
-        install install-strip uninstall \
-        test
+.PHONY: all release profile clean distclean \
+        install uninstall test

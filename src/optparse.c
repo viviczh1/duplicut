@@ -12,9 +12,9 @@
 #include "debug.h"
 
 
-/** Arguments cofiguration for getopt_long().
+/** Arguments configuration for getopt_long().
  */
-#define OPTSTRING "o:t:m:l:phv"
+#define OPTSTRING "o:t:m:l:pcChv"
 
 static struct option    g_options[] = {
     { "outfile",       required_argument, NULL, 'o' },
@@ -22,6 +22,8 @@ static struct option    g_options[] = {
     { "memlimit",      required_argument, NULL, 'm' },
     { "line-max-size", required_argument, NULL, 'l' },
     { "printable",     no_argument,       NULL, 'p' },
+    { "lowercase",     no_argument,       NULL, 'c' },
+    { "uppercase",     no_argument,       NULL, 'C' },
     { "help",          no_argument,       NULL, 'h' },
     { "version",       no_argument,       NULL, 'v' },
     { NULL,            0,                 NULL, '\0'},
@@ -123,11 +125,27 @@ static void setopt_printable(const char *value)
 }
 
 
+static void setopt_lowercase(const char *value)
+{
+    (void)value;
+
+    g_conf.lowercase_wordlist = 1;
+}
+
+
+static void setopt_uppercase(const char *value)
+{
+    (void)value;
+
+    g_conf.uppercase_wordlist = 1;
+}
+
+
 static void setopt_help(const char *value)
 {
     (void)value;
     printf("Usage: %s [OPTION]... [INFILE] -o [OUTFILE]\n"
-           "Remove duplicate lines from INFILE without sorting.\n"
+           "Remove duplicate lines from INFILE without changing order.\n"
            "\n"
            "Options:\n"
            "-o, --outfile <FILE>       Write result to <FILE>\n"
@@ -135,6 +153,8 @@ static void setopt_help(const char *value)
            "-m, --memlimit <VALUE>     Limit max used memory (default max)\n"
            "-l, --line-max-size <NUM>  Max line size (default %d)\n"
            "-p, --printable            Filter ascii printable lines\n"
+           "-c, --lowercase            Convert wordlist to lowercase\n"
+           "-C, --uppercase            Convert wordlist to uppercase\n"
            "-h, --help                 Display this help and exit\n"
            "-v, --version              Output version information and exit\n"
            "\n"
@@ -171,6 +191,8 @@ static void setopt(int opt, const char *value)
         { 'm', setopt_memlimit },
         { 'l', setopt_line_max_size },
         { 'p', setopt_printable },
+        { 'c', setopt_lowercase },
+        { 'C', setopt_uppercase },
         { 'h', setopt_help },
         { 'v', setopt_version },
         { '\0', NULL }
@@ -199,7 +221,7 @@ static void setopt(int opt, const char *value)
 /** Set options by filling out g_conf globale.
  * It first uses setopt() in order to set option arguments,
  * then handles main argument (input file) separately,
- * throught setopt_input().
+ * through setopt_input().
  */
 void        optparse(int argc, char **argv)
 {
@@ -211,18 +233,20 @@ void        optparse(int argc, char **argv)
     /* STDIN can be used as infile (priority to --infile arg if exists) */
     if (optind == argc - 1)
     {
-        DLOG("using %s as input file", argv[argc - 1]);
+        DLOG1("using %s as input file", argv[argc - 1]);
         setopt_infile(argv[argc - 1]);
     }
     else if (optind == argc && !isatty(STDIN_FILENO))
     {
-        DLOG("using STDIN as input file");
+        DLOG1("using STDIN as input file");
         setopt_infile("/dev/stdin");
     }
     else
         setopt_help(NULL);
 
-    /* outfile is mandatory */
+    if (g_conf.lowercase_wordlist && g_conf.uppercase_wordlist)
+        error("cannot use '--lowercase' and '--uppercase' together");
+
     if (g_conf.outfile_name == NULL)
         error("mandatory argument: --outfile");
 }

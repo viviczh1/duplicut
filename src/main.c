@@ -6,8 +6,8 @@
 #include "config.h"
 #include "file.h"
 #include "hmap.h"
-#include "tag_duplicates.h"
-#include "user_input.h"
+#include "dedupe.h"
+#include "uinput.h"
 #include "status.h"
 #include "error.h"
 
@@ -28,7 +28,7 @@ struct file *g_file;
 struct hmap g_hmap;
 
 
-/** Rewrite file without zero-tagged lines, and update file size.
+/** Rewrite file, ignoring lines tagged with 'DISABLED_LINE'
  */
 static void     remove_duplicates(void)
 {
@@ -36,22 +36,35 @@ static void     remove_duplicates(void)
     t_line      line;
     size_t      line_size;
     char        *dst;
+    char        *base_ptr;
+    int         i;
 
     file_chunk.ptr = g_file->addr;
     file_chunk.endptr = g_file->addr + g_file->info.st_size;
 
+    i = 0;
+    base_ptr = file_chunk.ptr;
+
     dst = file_chunk.ptr;
-    while (get_next_line(&line, &file_chunk))
+    size_t junk_lines = 0;
+    while (get_next_line(&line, &file_chunk, &junk_lines))
     {
         line_size = LINE_SIZE(line);
         memmove(dst, LINE_ADDR(line), line_size);
         dst += line_size;
         if (dst != file_chunk.endptr)
             *dst++ = '\n';
+        i++;
+        if (i == 500000) {
+            set_status(FCLEAN_BYTES, (size_t)(file_chunk.ptr - base_ptr));
+            base_ptr = file_chunk.ptr;
+            i = 0;
+        }
     }
 
     /* update file size */
     g_file->info.st_size = dst - g_file->addr;
+    set_status(FCLEAN_BYTES, (size_t)(file_chunk.ptr - base_ptr));
 }
 
 
@@ -65,6 +78,7 @@ int             main(int argc, char **argv)
     update_status(FCOPY_START);
     init_file(g_conf.infile_name, g_conf.outfile_name);
     config(); /* configure g_conf options */
+    set_status(CHUNK_SIZE, g_conf.chunk_size);
 
     init_hmap(g_conf.hmap_size);
     update_status(TAGDUP_START);
@@ -74,5 +88,7 @@ int             main(int argc, char **argv)
     update_status(FCLEAN_START);
     remove_duplicates();
     destroy_file();
+
+    display_report();
     return (0);
 }
